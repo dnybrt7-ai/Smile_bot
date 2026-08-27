@@ -4,7 +4,7 @@ import { sendMessage, editMessageText, answerCallbackQuery, getChatMember, kb, e
 
 const COLLECT_MS = 4 * 60 * 1000;
 const JUDGE_MS = 5 * 60 * 1000;
-const MAX_ANSWER_LEN = 30;
+const MAX_ANSWER_LEN = 120;
 const MIN_PLAYERS = 3;
 const MAX_PLAYERS = 6;
 
