@@ -2,9 +2,11 @@ name = "smile-game-bot"
 main = "src/index.ts"
 compatibility_date = "2024-09-23"
 
+# متغیرهای غیرمحرمانه
 [vars]
-BOT_USERNAME = "your_bot_username_without_at"
+BOT_USERNAME = "Which_loughing_bot"
 
+# Durable Object: هر گروه یک نمونه GameRoom دارد که وضعیت بازی را نگه می‌دارد
 [[durable_objects.bindings]]
 name = "GAME_ROOM"
 class_name = "GameRoom"
@@ -13,9 +15,15 @@ class_name = "GameRoom"
 tag = "v1"
 new_classes = ["GameRoom"]
 
+# KV: لیست بازی‌های فعال (برای Cron) + نگاشت user -> chatId فعال (برای مسیر دادن پیام‌های پیوی)
 [[kv_namespaces]]
 binding = "REGISTRY"
-id = "REPLACE_WITH_YOUR_KV_NAMESPACE_ID"
+id = "8a274f110aea4eca9c50b447e2eaac2a"
 
+# هر یک دقیقه چک می‌کند تایمرهای دور جمع‌آوری / قضاوت تمام شده‌اند یا نه
 [triggers]
 crons = ["* * * * *"]
+
+# مقادیر محرمانه (با wrangler secret put یا از داشبورد Cloudflare ست شوند، نه اینجا):
+#   BOT_TOKEN       -> توکن ربات از BotFather
+#   WEBHOOK_SECRET  -> یک رشته رندوم دلخواه برای تایید وبهوک تلگرام
