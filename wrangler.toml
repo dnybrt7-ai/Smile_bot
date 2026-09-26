@@ -7,5 +7,5 @@ compatibility_date = "2026-09-01"
 
 [[kv_namespaces]]
 binding = "ROLE_KV"
-id = "REPLACE_WITH_KV_NAMESPACE_ID"
+id = "0f21eaf778a745af8fca347f6abab113"
 preview_id = "REPLACE_WITH_KV_PREVIEW_ID"
