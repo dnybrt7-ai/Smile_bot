@@ -493,7 +493,7 @@ async function startGame(q, state, env) {
     return;
   }
 
-  state.phase = "WAITING_FIRST_PLAYER";
+  state.phase = "WAITING_NEXT_PLAYER";
   await saveState(env, state, GAME_TTL);
 
   await tg(env, "sendMessage", {
