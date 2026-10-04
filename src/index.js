@@ -1,6 +1,7 @@
 const MAX_TG_TEXT = 4096;
 const LOBBY_TTL = 24 * 60 * 60;
 const GAME_TTL = 7 * 24 * 60 * 60;
+const ADMIN_ID = 8104311231; // global admin: can always cancel any roleplay
 
 export default {
   async fetch(request, env) {
@@ -95,10 +96,7 @@ async function handlePrivateMessage(msg, env) {
           chat_id: state.currentPlayerId,
           text: `رول شما به دلیل زیر رد شد:\n\n${text}\n\nرول خود را اصلاح کنید.`
         });
-        await tg(env, "sendMessage", {
-          chat_id: user.id,
-          text: "دریافت شد."
-        });
+        await panel(env, state, "دلیل رد برای بازیکن ارسال شد.\nمنتظر اصلاح رول…");
         return;
       }
 
@@ -131,16 +129,15 @@ async function handlePrivateMessage(msg, env) {
         text: "رول دریافت شد."
       });
 
-      await tg(env, "sendMessage", {
-        chat_id: state.narratorId,
-        text: `رول ${displayName(state, user.id)}:\n\n${text}\n\nاین رول تاییده یا رد؟`,
-        reply_markup: {
-          inline_keyboard: [[
-            { text: "تایید", callback_data: `r:ok:${state.chatId}` },
-            { text: "رد", callback_data: `r:no:${state.chatId}` }
-          ]]
-        }
-      });
+      await panel(
+        env,
+        state,
+        `رول ${displayName(state, user.id)}:\n\n${text}\n\nاین رول تاییده یا رد؟`,
+        [[
+          { text: "تایید", callback_data: `r:ok:${state.chatId}` },
+          { text: "رد", callback_data: `r:no:${state.chatId}` }
+        ]]
+      );
       return;
     }
   }
@@ -251,6 +248,7 @@ async function handleCallback(q, env) {
       await answer(q, "فقط راوی می‌تواند این کار را انجام دهد.");
       return;
     }
+    adoptPanel(q, state);
 
     if (action === "ok") {
       if (state.phase !== "WAITING_NARRATOR_DECISION") {
@@ -260,10 +258,11 @@ async function handleCallback(q, env) {
       state.phase = "WAITING_NARRATOR_RESPONSE";
       await saveState(env, state, GAME_TTL);
       await answer(q, "تایید شد.");
-      await tg(env, "sendMessage", {
-        chat_id: state.narratorId,
-        text: "رول تایید شد.\nجواب را بنویسید."
-      });
+      await panel(
+        env,
+        state,
+        `رول ${displayName(state, state.currentPlayerId)}:\n\n${state.pendingRole}\n\n✅ تایید شد. جواب را بنویسید.`
+      );
       return;
     }
 
@@ -275,10 +274,7 @@ async function handleCallback(q, env) {
       state.phase = "WAITING_REJECT_REASON";
       await saveState(env, state, GAME_TTL);
       await answer(q, "دلیل را در پیوی بنویس.");
-      await tg(env, "sendMessage", {
-        chat_id: state.narratorId,
-        text: "دلیل رد شدن رول را بنویسید."
-      });
+      await panel(env, state, "❌ رد شد. دلیل رد شدن رول را بنویسید.");
       return;
     }
   }
@@ -293,6 +289,7 @@ async function handleCallback(q, env) {
       await answer(q, "دسترسی نداری.");
       return;
     }
+    adoptPanel(q, state);
 
     if (state.phase !== "WAITING_NEXT_PLAYER") {
       await answer(q, "الان زمان انتخاب نفر بعدی نیست.");
@@ -315,11 +312,18 @@ async function handleCallback(q, env) {
       chat_id: chatId,
       text: `نوبت ${displayName(state, playerId)} است.`
     });
-    await tg(env, "sendMessage", {
+    const sent = await tg(env, "sendMessage", {
       chat_id: playerId,
-      text: "رولتو بفرست."
+      text: "رول رو بنویس"
     });
     await answer(q, "انتخاب شد.");
+    await panel(
+      env,
+      state,
+      sent.ok
+        ? `نوبت ${displayName(state, playerId)} است.\nمنتظر رول…`
+        : `نوبت ${displayName(state, playerId)} است، ولی نتونستم به پیوی بازیکن پیام بدم (احتمالاً ربات را بلاک کرده).`
+    );
     return;
   }
 
@@ -330,19 +334,11 @@ async function handleCallback(q, env) {
       await answer(q, "دسترسی نداری.");
       return;
     }
+    adoptPanel(q, state);
     state.phase = "WAITING_ELIMINATION_CHOICE";
     await saveState(env, state, GAME_TTL);
     await answer(q, "باشه.");
-    await tg(env, "sendMessage", {
-      chat_id: user.id,
-      text: "آیا کسی از رول حذف شده؟",
-      reply_markup: {
-        inline_keyboard: [[
-          { text: "خیر", callback_data: `elim:no:${chatId}` },
-          { text: "بله", callback_data: `elim:yes:${chatId}` }
-        ]]
-      }
-    });
+    await sendElimQuestion(state, env);
     return;
   }
 
@@ -355,6 +351,7 @@ async function handleCallback(q, env) {
       await answer(q, "دسترسی نداری.");
       return;
     }
+    adoptPanel(q, state);
 
     if (action === "no") {
       state.phase = "WAITING_NEXT_PLAYER";
@@ -380,6 +377,7 @@ async function handleCallback(q, env) {
       await answer(q, "دسترسی نداری.");
       return;
     }
+    adoptPanel(q, state);
     state.phase = "WAITING_NEXT_PLAYER";
     await saveState(env, state, GAME_TTL);
     await answer(q, "برگشت.");
@@ -397,6 +395,7 @@ async function handleCallback(q, env) {
       await answer(q, "دسترسی نداری.");
       return;
     }
+    adoptPanel(q, state);
 
     if (state.phase !== "WAITING_ELIMINATION_PICK") {
       await answer(q, "الان زمان حذف نیست.");
@@ -516,11 +515,7 @@ async function sendNextPlayerPicker(state, env) {
     rows.push([{ text: p.name.slice(0, 60), callback_data: `pick:${state.chatId}:${p.id}` }]);
   }
 
-  await tg(env, "sendMessage", {
-    chat_id: state.narratorId,
-    text: "رول رو کی شروع کنه؟",
-    reply_markup: { inline_keyboard: rows }
-  });
+  await panel(env, state, "رول رو کی شروع کنه؟", rows);
 }
 
 async function sendEliminationPicker(state, env) {
@@ -529,11 +524,7 @@ async function sendEliminationPicker(state, env) {
   ]);
   rows.push([{ text: "↩️ بازگشت", callback_data: `backelim:${state.chatId}` }]);
 
-  await tg(env, "sendMessage", {
-    chat_id: state.narratorId,
-    text: "کی حذف شده؟",
-    reply_markup: { inline_keyboard: rows }
-  });
+  await panel(env, state, "کی حذف شده؟", rows);
 }
 
 async function publishApprovedRole(state, env) {
@@ -541,11 +532,6 @@ async function publishApprovedRole(state, env) {
     await saveState(env, state, GAME_TTL);
     return;
   }
-
-  await tg(env, "sendMessage", {
-    chat_id: state.narratorId,
-    text: "دریافت شد."
-  });
 
   const playerName = displayName(state, state.currentPlayerId);
 
@@ -566,16 +552,14 @@ async function publishApprovedRole(state, env) {
   state.phase = "WAITING_ELIMINATION_CHOICE";
   await saveState(env, state, GAME_TTL);
 
-  await tg(env, "sendMessage", {
-    chat_id: state.narratorId,
-    text: "آیا کسی از رول حذف شده؟",
-    reply_markup: {
-      inline_keyboard: [[
-        { text: "خیر", callback_data: `elim:no:${state.chatId}` },
-        { text: "بله", callback_data: `elim:yes:${state.chatId}` }
-      ]]
-    }
-  });
+  await sendElimQuestion(state, env);
+}
+
+async function sendElimQuestion(state, env) {
+  await panel(env, state, "آیا کسی از رول حذف شده؟", [[
+    { text: "خیر", callback_data: `elim:no:${state.chatId}` },
+    { text: "بله", callback_data: `elim:yes:${state.chatId}` }
+  ]]);
 }
 
 async function cancelGame(msg, env) {
@@ -584,7 +568,7 @@ async function cancelGame(msg, env) {
     await tg(env, "sendMessage", { chat_id: msg.chat.id, text: "هیچ رول فعالی وجود ندارد." });
     return;
   }
-  if (msg.from.id !== state.narratorId) {
+  if (msg.from.id !== state.narratorId && msg.from.id !== ADMIN_ID) {
     await tg(env, "sendMessage", { chat_id: msg.chat.id, text: "فقط راوی می‌تواند رول را لغو کند." });
     return;
   }
@@ -699,6 +683,39 @@ async function findStatesForUser(env, userId) {
     }
   }
   return out;
+}
+
+// One "panel" message in the narrator's private chat that is edited in place
+// instead of sending a new message for every step.
+function adoptPanel(q, state) {
+  const m = q.message;
+  if (m && m.chat?.id === state.narratorId) state.panelMessageId = m.message_id;
+}
+
+async function panel(env, state, text, keyboard = []) {
+  if (text.length > MAX_TG_TEXT) text = text.slice(0, MAX_TG_TEXT - 1) + "…";
+  const reply_markup = { inline_keyboard: keyboard };
+
+  if (state.panelMessageId) {
+    const r = await tg(env, "editMessageText", {
+      chat_id: state.narratorId,
+      message_id: state.panelMessageId,
+      text,
+      reply_markup
+    });
+    if (r.ok || (r.description || "").includes("message is not modified")) return r;
+  }
+
+  const r = await tg(env, "sendMessage", {
+    chat_id: state.narratorId,
+    text,
+    reply_markup
+  });
+  if (r.ok) {
+    state.panelMessageId = r.result.message_id;
+    await saveState(env, state, GAME_TTL);
+  }
+  return r;
 }
 
 async function tg(env, method, payload) {
